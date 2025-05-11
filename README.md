@@ -28,6 +28,27 @@ The script will check for and help install the following dependencies:
 
 ## Installation
 
+### Easy Installation (Recommended)
+
+Use the provided installation script to set up the tool:
+
+1. Clone the repository or download the files
+2. Run the installation script:
+   ```zsh
+   ./install.sh
+   ```
+
+The script will:
+- Make the PR script executable
+- Install the command as `pr` (either system-wide or in your user bin)
+- Set up the template directory
+- Help you configure your Gemini API key
+- Add the necessary paths to your shell configuration
+
+### Manual Installation
+
+If you prefer to set things up manually:
+
 1. Clone the repository or download `pr_script.sh`
 2. Make the script executable:
    ```zsh
