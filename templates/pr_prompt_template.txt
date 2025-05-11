@@ -1,0 +1,17 @@
+Given the following git changes, generate a concise and informative pull request description:
+
+%s
+
+Please provide:
+1. A brief, descriptive title for the pull request (prefix with "feat:", "fix:", "refactor:", etc. as appropriate)
+2. A clear summary of the changes made
+3. Key implementation details for reviewers
+4. Any testing considerations or potential impacts
+5. List of files changed and their status
+
+Format the response as:
+
+Title: <your suggested PR title>
+
+Description:
+<your description here, using markdown formatting>
