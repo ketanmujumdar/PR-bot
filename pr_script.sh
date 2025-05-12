@@ -1,5 +1,18 @@
 #!/bin/bash
 
+# Load configuration
+if [ -f "/Users/ketanmujumdar/.config/pr_cmd/config" ]; then
+    source "/Users/ketanmujumdar/.config/pr_cmd/config"
+fi
+
+# Use HOME variable to create a portable path to the config file
+CONFIG_FILE="$HOME/.config/pr_cmd/config"
+
+# Load configuration
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
 # Environment variables (can be customized)
 export TEMP_DIR="${TEMP_DIR:-/tmp/git-changes}"
 export OUTPUT_FILE="${OUTPUT_FILE:-$TEMP_DIR/changes.txt}"

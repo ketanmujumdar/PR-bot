@@ -37,6 +37,11 @@ echo "1) System-wide (/usr/local/bin/pr) - requires sudo"
 echo "2) User-only (~/bin/pr) - no sudo required"
 read -p "Enter choice [1-2]: " install_choice
 
+# Create config directory and file
+CONFIG_DIR="$HOME/.config/pr_cmd"
+CONFIG_FILE="$CONFIG_DIR/config"
+mkdir -p "$CONFIG_DIR"
+
 case $install_choice in
     1)
         # System-wide installation
@@ -48,34 +53,22 @@ case $install_choice in
             sudo mkdir -p /usr/local/bin
         fi
         
-        # Create the templates directory in a global location
-        if [ ! -d "/usr/local/share/pr_cmd" ]; then
-            echo "Creating templates directory in /usr/local/share/pr_cmd..."
-            sudo mkdir -p "/usr/local/share/pr_cmd"
+        # Create the templates directory in the global location
+        GLOBAL_TEMPLATES_DIR="/usr/local/share/pr_cmd/templates"
+        if [ ! -d "$GLOBAL_TEMPLATES_DIR" ]; then
+            echo "Creating templates directory in /usr/local/share/pr_cmd/templates..."
+            sudo mkdir -p "$GLOBAL_TEMPLATES_DIR"
         fi
         
         # Copy templates to the global location
-        echo "Copying templates to /usr/local/share/pr_cmd..."
-        sudo cp -R "$TEMPLATES_DIR" "/usr/local/share/pr_cmd/"
+        echo "Copying templates to $GLOBAL_TEMPLATES_DIR..."
+        sudo cp -R "$TEMPLATES_DIR"/* "$GLOBAL_TEMPLATES_DIR/"
         
-        # Create a wrapper script that sets the correct template path
-        WRAPPER_SCRIPT=$(cat << 'EOF'
-#!/bin/bash
-# Set the template path for the PR script
-export TEMPLATE_FILE="/usr/local/share/pr_cmd/templates/pr_prompt_template.txt"
-# Run the actual script with absolute path
-exec "/usr/local/bin/pr_script.sh" "$@"
-EOF
-)
+        # Add template location to config file
+        echo "TEMPLATE_FILE=\"$GLOBAL_TEMPLATES_DIR/pr_prompt_template.txt\"" > "$CONFIG_FILE"
         
-        # Write the wrapper script to a temporary file
-        echo "$WRAPPER_SCRIPT" > /tmp/pr_wrapper.sh
-        chmod +x /tmp/pr_wrapper.sh
-        
-        # Create symbolic link to the wrapper script
-        sudo cp /tmp/pr_wrapper.sh /usr/local/bin/pr
-        sudo chmod +x /usr/local/bin/pr
-        sudo ln -sf "$SOURCE_SCRIPT" /usr/local/bin/pr_script.sh
+        # Create symbolic link to the script
+        sudo ln -sf "$SOURCE_SCRIPT" /usr/local/bin/pr
         
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}✓${NC} Successfully installed to /usr/local/bin/pr"
@@ -96,6 +89,20 @@ EOF
             echo "Creating ~/bin directory..."
             mkdir -p "$HOME/bin"
         fi
+        
+        # Create local templates directory
+        LOCAL_TEMPLATES_DIR="$HOME/.local/share/pr_cmd/templates"
+        if [ ! -d "$LOCAL_TEMPLATES_DIR" ]; then
+            echo "Creating templates directory in $LOCAL_TEMPLATES_DIR..."
+            mkdir -p "$LOCAL_TEMPLATES_DIR"
+        fi
+        
+        # Copy templates to the local location
+        echo "Copying templates to $LOCAL_TEMPLATES_DIR..."
+        cp -R "$TEMPLATES_DIR"/* "$LOCAL_TEMPLATES_DIR/"
+        
+        # Add template location to config file
+        echo "TEMPLATE_FILE=\"$LOCAL_TEMPLATES_DIR/pr_prompt_template.txt\"" > "$CONFIG_FILE"
         
         # Create symbolic link
         ln -sf "$SOURCE_SCRIPT" "$HOME/bin/pr"
@@ -162,40 +169,29 @@ if [[ "$setup_api" == "y" || "$setup_api" == "Y" ]]; then
     read -p "Enter your Gemini API key: " api_key
     
     if [ -n "$api_key" ]; then
-        # Determine the appropriate config file
-        CONFIG_DIR="$HOME/.config/pr_cmd"
-        CONFIG_FILE="$CONFIG_DIR/config"
-        
-        # Create config directory if it doesn't exist
-        mkdir -p "$CONFIG_DIR"
-        
-        # Write API key to config file
-        echo "GEMINI_API_KEY=\"$api_key\"" > "$CONFIG_FILE"
+        # Add API key to config file
+        echo "GEMINI_API_KEY=\"$api_key\"" >> "$CONFIG_FILE"
         chmod 600 "$CONFIG_FILE"  # Secure the file containing the API key
         
         echo -e "${GREEN}✓${NC} API key configured successfully"
         
-        # If global installation, update the wrapper script to source the config file
-        if [ "$install_choice" -eq 1 ]; then
-            WRAPPER_SCRIPT=$(cat << EOF
+        # Update the main script to source this config file
+        if ! grep -q "source \"$CONFIG_FILE\"" "$SOURCE_SCRIPT"; then
+            # Add code to beginning of script to source the config file
+            TMP_SCRIPT="${TEMP_DIR:-/tmp}/pr_script_tmp.sh"
+            cat > "$TMP_SCRIPT" << EOF
 #!/bin/bash
-# Source the config file if it exists
+
+# Load configuration
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 fi
-# Set the template path for the PR script
-export TEMPLATE_FILE="/usr/local/share/pr_cmd/templates/pr_prompt_template.txt"
-# Run the actual script with absolute path
-exec "/usr/local/bin/pr_script.sh" "\$@"
+
+$(cat "$SOURCE_SCRIPT" | grep -v "^#!/bin/bash")
 EOF
-)
-            # Update the wrapper script
-            echo "$WRAPPER_SCRIPT" > /tmp/pr_wrapper.sh
-            chmod +x /tmp/pr_wrapper.sh
-            sudo cp /tmp/pr_wrapper.sh /usr/local/bin/pr
-            sudo chmod +x /usr/local/bin/pr
-            
-            echo -e "${GREEN}✓${NC} Updated wrapper script to use the config file"
+            mv "$TMP_SCRIPT" "$SOURCE_SCRIPT"
+            chmod +x "$SOURCE_SCRIPT"
+            echo -e "${GREEN}✓${NC} Updated script to load configuration automatically"
         fi
     else
         echo -e "${YELLOW}No API key provided.${NC}"
@@ -205,3 +201,65 @@ else
     echo -e "${YELLOW}Note:${NC} You'll need to set the GEMINI_API_KEY environment variable before using the 'pr' command."
     echo "You can do this by running: export GEMINI_API_KEY='your-api-key'"
 fi
+
+# Function to create PR using GitHub CLI - adding the definition that was missing
+create_github_pr() {
+    local description_file="$1"
+    
+    # Check if GitHub CLI is installed
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "Error: GitHub CLI (gh) is not installed."
+        echo "Please install it using one of the following commands:"
+        echo "  - macOS: brew install gh"
+        echo "  - Linux (Debian/Ubuntu): apt install gh"
+        echo "  - Linux (Fedora): dnf install gh"
+        echo "  - Or visit: https://github.com/cli/cli#installation"
+        return 1
+    fi
+    
+    # Check if logged in to GitHub CLI
+    if ! gh auth status >/dev/null 2>&1; then
+        echo "You need to authenticate with GitHub CLI first."
+        echo "Please run: gh auth login"
+        return 1
+    fi
+    
+    # Extract title from the PR description file
+    local pr_title=$(grep -m 1 "^Title:" "$description_file" | sed 's/^Title: //')
+    
+    # If no title found, prompt the user
+    if [ -z "$pr_title" ]; then
+        read -p "Enter a title for your PR: " pr_title
+    fi
+    
+    # Get current branch
+    local current_branch=$(git branch --show-current)
+    
+    # Get default branch (usually main or master)
+    local default_branch=$(git remote show origin | grep "HEAD branch" | awk '{print $NF}')
+    
+    # Ask user for target branch
+    read -p "Enter the target branch [default: $default_branch]: " target_branch
+    target_branch=${target_branch:-$default_branch}
+    
+    echo "Creating PR from '$current_branch' to '$target_branch'..."
+    echo "Title: $pr_title"
+    
+    # Create PR using GitHub CLI
+    if gh pr create --title "$pr_title" --body-file "$description_file" --base "$target_branch"; then
+        echo "PR created successfully!"
+        
+        # Get the URL of the newly created PR
+        local pr_url=$(gh pr view --json url | jq -r .url)
+        echo "PR URL: $pr_url"
+        
+        # Open PR in browser if requested
+        read -p "Open PR in browser? (y/n): " open_browser
+        if [[ "$open_browser" == "y" || "$open_browser" == "Y" ]]; then
+            gh pr view --web
+        fi
+    else
+        echo "Failed to create PR."
+        return 1
+    fi
+}
