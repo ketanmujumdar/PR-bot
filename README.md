@@ -9,6 +9,8 @@ A powerful command-line tool to automate the process of pull request creation. I
 - Generate PR descriptions using Gemini AI
 - Create GitHub PRs directly from your terminal
 
+![Demo](recording.gif)
+
 [Features](#features) •
 [Requirements](#requirements) •
 [Installation](#installation) •
