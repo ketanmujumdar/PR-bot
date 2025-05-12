@@ -1,6 +1,19 @@
 # PR Script Tool
 
-A powerful command-line tool to automate the process of pull request creation. This script helps you select commits, generate a well-formatted PR description using Gemini AI, and create a GitHub PR directly from your terminal.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Shell: Bash](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
+[![AI: Gemini](https://img.shields.io/badge/AI-Gemini-blue.svg)](https://deepmind.google/technologies/gemini/)
+
+A powerful command-line tool to automate the process of pull request creation. It helps you:
+- Select commits interactively
+- Generate PR descriptions using Gemini AI
+- Create GitHub PRs directly from your terminal
+
+[Features](#features) •
+[Requirements](#requirements) •
+[Installation](#installation) •
+[Usage](#usage) •
+[Configuration](#configuration)
 
 ## Features
 
@@ -61,9 +74,16 @@ If you prefer to set things up manually:
 
 ## Usage
 
-Run the script in your git repository:
+### Quick Start
 
 ```zsh
+# Navigate to your git repository
+cd your-repo
+
+# Run the script
+pr
+
+# Or with the full path
 ./pr_script.sh
 ```
 
@@ -146,4 +166,13 @@ sudo apt install jq
 
 ## License
 
-Open source - feel free to modify and distribute.
+This project is open source under the MIT License - feel free to modify and distribute.
+
+<!-- markdownlint-configure-file {
+  "MD013": {
+    "code_blocks": false,
+    "tables": false
+  },
+  "MD033": false,
+  "MD041": false
+} -->
