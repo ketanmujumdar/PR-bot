@@ -175,12 +175,17 @@ case $llm_choice in
     1)
         # Gemini Configuration
         read -p "Enter your Gemini API key: " api_key
+        read -p "Enter Gemini model to use [default: gemini-2.0-flash-lite]: " gemini_model
+        gemini_model=${gemini_model:-gemini-2.0-flash-lite}
+        
         if [ -n "$api_key" ]; then
             # Add Gemini settings to config file
             echo "LLM_PROVIDER=\"gemini\"" >> "$CONFIG_FILE"
             echo "GEMINI_API_KEY=\"$api_key\"" >> "$CONFIG_FILE"
+            echo "GEMINI_API_MODEL=\"$gemini_model\"" >> "$CONFIG_FILE"
             chmod 600 "$CONFIG_FILE"  # Secure the file containing the API key
             echo -e "${GREEN}✓${NC} Gemini API configured successfully"
+            echo -e "Using model: $gemini_model"
         else
             echo -e "${YELLOW}No API key provided.${NC}"
             echo "You'll need to set the GEMINI_API_KEY environment variable before using the 'pr' command."

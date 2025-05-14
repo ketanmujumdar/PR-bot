@@ -137,6 +137,7 @@ export LLM_PROVIDER="gemini" # or "openai" for OpenAI or OpenAI-compatible APIs
 
 # For Gemini API
 export GEMINI_API_KEY="your-gemini-api-key-here"
+export GEMINI_API_MODEL="gemini-2.0-flash-lite" # or other Gemini models like gemini-2.0-pro, etc.
 
 # For OpenAI or compatible APIs (like LM Studio)
 export OPENAI_API_KEY="your-openai-api-key-here"

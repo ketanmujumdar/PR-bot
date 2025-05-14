@@ -22,6 +22,7 @@ export TEMPLATE_FILE="${TEMPLATE_FILE:-$(dirname "$0")/templates/pr_prompt_templ
 
 # LLM API settings (OpenAI-compatible API support)
 export LLM_PROVIDER="${LLM_PROVIDER:-gemini}"  # Options: gemini, openai
+export GEMINI_API_MODEL="${GEMINI_API_MODEL:-gemini-2.0-flash-lite}"  # Default Gemini model
 export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 export OPENAI_API_BASE_URL="${OPENAI_API_BASE_URL:-https://api.openai.com/v1}"
 export OPENAI_API_MODEL="${OPENAI_API_MODEL:-gpt-3.5-turbo}"
@@ -97,7 +98,7 @@ send_to_gemini() {
 EOF
         
         # Send request to Gemini API
-        if curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=$GEMINI_API_KEY" \
+        if curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/$GEMINI_API_MODEL:generateContent?key=$GEMINI_API_KEY" \
             -H "Content-Type: application/json" \
             -d "@$temp_request" > "$temp_response"; then
             
