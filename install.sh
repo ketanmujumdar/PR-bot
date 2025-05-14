@@ -161,25 +161,98 @@ echo ""
 echo -e "${YELLOW}Usage:${NC}"
 echo "Run 'pr' in any git repository to select and extract commit information."
 
-# Ask for Gemini API key
+# Ask for LLM Provider configuration
 echo ""
-echo -e "${YELLOW}Gemini API Key Configuration:${NC}"
-read -p "Would you like to set up your Gemini API key now? (y/n): " setup_api
-if [[ "$setup_api" == "y" || "$setup_api" == "Y" ]]; then
-    read -p "Enter your Gemini API key: " api_key
+echo -e "${YELLOW}LLM Provider Configuration:${NC}"
+echo "This tool supports multiple AI providers:"
+echo "1) Gemini API (requires Google API key)"
+echo "2) OpenAI API (requires OpenAI API key)"
+echo "3) Local LLM with OpenAI-compatible API (e.g., LM Studio)"
+echo "4) Skip configuration (configure later manually)"
+read -p "Choose an option [1-4]: " llm_choice
+
+case $llm_choice in
+    1)
+        # Gemini Configuration
+        read -p "Enter your Gemini API key: " api_key
+        read -p "Enter Gemini model to use [default: gemini-2.0-flash-lite]: " gemini_model
+        gemini_model=${gemini_model:-gemini-2.0-flash-lite}
+        
+        if [ -n "$api_key" ]; then
+            # Add Gemini settings to config file
+            echo "LLM_PROVIDER=\"gemini\"" >> "$CONFIG_FILE"
+            echo "GEMINI_API_KEY=\"$api_key\"" >> "$CONFIG_FILE"
+            echo "GEMINI_API_MODEL=\"$gemini_model\"" >> "$CONFIG_FILE"
+            chmod 600 "$CONFIG_FILE"  # Secure the file containing the API key
+            echo -e "${GREEN}✓${NC} Gemini API configured successfully"
+            echo -e "Using model: $gemini_model"
+        else
+            echo -e "${YELLOW}No API key provided.${NC}"
+            echo "You'll need to set the GEMINI_API_KEY environment variable before using the 'pr' command."
+        fi
+        ;;
     
-    if [ -n "$api_key" ]; then
-        # Add API key to config file
-        echo "GEMINI_API_KEY=\"$api_key\"" >> "$CONFIG_FILE"
-        chmod 600 "$CONFIG_FILE"  # Secure the file containing the API key
+    2)
+        # OpenAI Configuration
+        read -p "Enter your OpenAI API key: " api_key
+        if [ -n "$api_key" ]; then
+            # Add OpenAI settings to config file
+            echo "LLM_PROVIDER=\"openai\"" >> "$CONFIG_FILE"
+            echo "OPENAI_API_KEY=\"$api_key\"" >> "$CONFIG_FILE"
+            echo "OPENAI_API_BASE_URL=\"https://api.openai.com/v1\"" >> "$CONFIG_FILE"
+            read -p "Enter model name [default: gpt-3.5-turbo]: " model_name
+            model_name=${model_name:-gpt-3.5-turbo}
+            echo "OPENAI_API_MODEL=\"$model_name\"" >> "$CONFIG_FILE"
+            chmod 600 "$CONFIG_FILE"  # Secure the file containing the API key
+            echo -e "${GREEN}✓${NC} OpenAI API configured successfully"
+        else
+            echo -e "${YELLOW}No API key provided.${NC}"
+            echo "You'll need to set the OPENAI_API_KEY environment variable before using the 'pr' command."
+        fi
+        ;;
+    
+    3)
+        # Local LLM Configuration
+        echo "Setting up for local LLM with OpenAI-compatible API (e.g., LM Studio)"
+        # Add Local LLM settings to config file
+        echo "LLM_PROVIDER=\"openai\"" >> "$CONFIG_FILE"
+        echo "OPENAI_API_KEY=\"local-llm\"" >> "$CONFIG_FILE"  # Placeholder value
         
-        echo -e "${GREEN}✓${NC} API key configured successfully"
+        # Get the base URL
+        read -p "Enter the API base URL [default: http://localhost:1234/v1]: " base_url
+        base_url=${base_url:-http://localhost:1234/v1}
+        echo "OPENAI_API_BASE_URL=\"$base_url\"" >> "$CONFIG_FILE"
         
-        # Update the main script to source this config file
-        if ! grep -q "source \"$CONFIG_FILE\"" "$SOURCE_SCRIPT"; then
-            # Add code to beginning of script to source the config file
-            TMP_SCRIPT="${TEMP_DIR:-/tmp}/pr_script_tmp.sh"
-            cat > "$TMP_SCRIPT" << EOF
+        # Get the model name
+        read -p "Enter the model name as shown in your LLM provider: " model_name
+        if [ -n "$model_name" ]; then
+            echo "OPENAI_API_MODEL=\"$model_name\"" >> "$CONFIG_FILE"
+        fi
+        
+        chmod 600 "$CONFIG_FILE"  # Secure the file
+        echo -e "${GREEN}✓${NC} Local LLM configured successfully"
+        echo -e "${YELLOW}Note:${NC} Ensure your local LLM server is running when using the tool."
+        echo "For LM Studio: Start the application and enable the local server with your chosen model."
+        ;;
+    
+    4)
+        echo -e "${YELLOW}Skipping LLM configuration.${NC}"
+        echo "You'll need to configure an LLM provider manually before using the 'pr' command."
+        echo "See README.md for configuration instructions."
+        ;;
+    
+    *)
+        echo -e "${YELLOW}Invalid choice. Skipping LLM configuration.${NC}"
+        echo "You'll need to configure an LLM provider manually before using the 'pr' command."
+        echo "See README.md for configuration instructions."
+        ;;
+esac
+
+# Update the main script to source this config file
+if ! grep -q "source \"$CONFIG_FILE\"" "$SOURCE_SCRIPT"; then
+    # Add code to beginning of script to source the config file
+    TMP_SCRIPT="${TEMP_DIR:-/tmp}/pr_script_tmp.sh"
+    cat > "$TMP_SCRIPT" << EOF
 #!/bin/bash
 
 # Load configuration
@@ -189,17 +262,9 @@ fi
 
 $(cat "$SOURCE_SCRIPT" | grep -v "^#!/bin/bash")
 EOF
-            mv "$TMP_SCRIPT" "$SOURCE_SCRIPT"
-            chmod +x "$SOURCE_SCRIPT"
-            echo -e "${GREEN}✓${NC} Updated script to load configuration automatically"
-        fi
-    else
-        echo -e "${YELLOW}No API key provided.${NC}"
-        echo "You'll need to set the GEMINI_API_KEY environment variable before using the 'pr' command."
-    fi
-else
-    echo -e "${YELLOW}Note:${NC} You'll need to set the GEMINI_API_KEY environment variable before using the 'pr' command."
-    echo "You can do this by running: export GEMINI_API_KEY='your-api-key'"
+    mv "$TMP_SCRIPT" "$SOURCE_SCRIPT"
+    chmod +x "$SOURCE_SCRIPT"
+    echo -e "${GREEN}✓${NC} Updated script to load configuration automatically"
 fi
 
 # Function to create PR using GitHub CLI - adding the definition that was missing
