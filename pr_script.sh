@@ -606,13 +606,6 @@ if [[ "$send_to_gemini_confirm" == "y" || "$send_to_gemini_confirm" == "Y" ]]; t
     content=$(cat "$OUTPUT_FILE")
     send_to_gemini "$content"
     
-    # Ask if user wants to create a PR using GitHub CLI
-    if [ -f "${TEMP_DIR}/pr_description.md" ]; then
-        read -p "Would you like to create a GitHub PR using this description? (y/n): " create_pr_confirm
-        if [[ "$create_pr_confirm" == "y" || "$create_pr_confirm" == "Y" ]]; then
-            create_github_pr "${TEMP_DIR}/pr_description.md"
-        fi
-    fi
 else
     echo "You can now use $OUTPUT_FILE for generating PR documentation."
 fi
