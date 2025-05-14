@@ -20,10 +20,23 @@ export NUM_COMMITS="${NUM_COMMITS:-20}"
 export GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 export TEMPLATE_FILE="${TEMPLATE_FILE:-$(dirname "$0")/templates/pr_prompt_template.txt}"
 
-# Check for required API key
-if [ -z "$GEMINI_API_KEY" ]; then
+# LLM API settings (OpenAI-compatible API support)
+export LLM_PROVIDER="${LLM_PROVIDER:-gemini}"  # Options: gemini, openai
+export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+export OPENAI_API_BASE_URL="${OPENAI_API_BASE_URL:-https://api.openai.com/v1}"
+export OPENAI_API_MODEL="${OPENAI_API_MODEL:-gpt-3.5-turbo}"
+
+# Check for required API key based on provider
+if [[ "$LLM_PROVIDER" == "gemini" && -z "$GEMINI_API_KEY" ]]; then
     echo "ERROR: GEMINI_API_KEY environment variable is not set"
     echo "Please set it using: export GEMINI_API_KEY='your-api-key'"
+    echo "Or switch to OpenAI-compatible API using: export LLM_PROVIDER='openai'"
+    exit 1
+elif [[ "$LLM_PROVIDER" == "openai" && -z "$OPENAI_API_KEY" ]]; then
+    echo "ERROR: OPENAI_API_KEY environment variable is not set"
+    echo "For local LLMs like LM Studio, you can set any value (e.g. 'lm-studio')"
+    echo "Please set it using: export OPENAI_API_KEY='your-api-key'"
+    echo "Or switch to Gemini API using: export LLM_PROVIDER='gemini'"
     exit 1
 fi
 
@@ -49,11 +62,12 @@ estimate_tokens() {
     echo $((char_count / 4))
 }
 
-# Function to send content to Gemini API
+# Function to send content to LLM API (supports both Gemini and OpenAI-compatible APIs)
 send_to_gemini() {
     local content="$1"
     local formatted_prompt=$(format_prompt "$content")
     local estimated_tokens=$(estimate_tokens "$formatted_prompt")
+    local provider="${LLM_PROVIDER:-gemini}"
     
     if [ "$estimated_tokens" -gt 1000000 ]; then
         echo "Warning: Content might exceed 1 million tokens (estimated: $estimated_tokens)"
@@ -64,14 +78,15 @@ send_to_gemini() {
         fi
     fi
     
-    echo "Sending content to Gemini API (estimated tokens: $estimated_tokens)..."
-    
     # Create a temporary file for the request body
     local temp_request="${TEMP_DIR}/request.json"
     local temp_response="${TEMP_DIR}/response.json"
     
-    # Create the JSON request body
-    cat > "$temp_request" << EOF
+    if [[ "$provider" == "gemini" ]]; then
+        echo "Sending content to Gemini API (estimated tokens: $estimated_tokens)..."
+        
+        # Create the JSON request body for Gemini
+        cat > "$temp_request" << EOF
 {
     "contents": [{
         "parts":[{
@@ -80,44 +95,107 @@ send_to_gemini() {
     }]
 }
 EOF
-    
-    # Send request to Gemini API
-    if curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=$GEMINI_API_KEY" \
-        -H "Content-Type: application/json" \
-        -d "@$temp_request" > "$temp_response"; then
         
-        # Debug: Show the raw response
-        echo "Debug: Raw API Response:"
-        cat "$temp_response"
-        echo "----------------------"
-        
-        # Extract the generated text from the response
-        if generated_text=$(jq -r '.candidates[0].content.parts[0].text // empty' "$temp_response") && [ -n "$generated_text" ]; then
-            # Save both raw response and extracted text
-            echo "$generated_text" > "${TEMP_DIR}/pr_description.md"
-            mv "$temp_response" "${TEMP_DIR}/gemini_response.json"
+        # Send request to Gemini API
+        if curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=$GEMINI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "@$temp_request" > "$temp_response"; then
             
-            echo "Successfully generated PR description"
-            echo "Full response saved to ${TEMP_DIR}/gemini_response.json"
-            echo "PR description saved to ${TEMP_DIR}/pr_description.md"
+            # Debug: Show the raw response
+            echo "Debug: Raw API Response:"
+            cat "$temp_response"
+            echo "----------------------"
             
-            # Display the PR description
-            echo -e "\nGenerated PR Description:"
-            echo "------------------------"
-            cat "${TEMP_DIR}/pr_description.md"
-            echo "------------------------"
+            # Extract the generated text from the response
+            if generated_text=$(jq -r '.candidates[0].content.parts[0].text // empty' "$temp_response") && [ -n "$generated_text" ]; then
+                # Save both raw response and extracted text
+                echo "$generated_text" > "${TEMP_DIR}/pr_description.md"
+                mv "$temp_response" "${TEMP_DIR}/gemini_response.json"
+                
+                echo "Successfully generated PR description"
+                echo "Full response saved to ${TEMP_DIR}/gemini_response.json"
+                echo "PR description saved to ${TEMP_DIR}/pr_description.md"
+                
+                # Display the PR description
+                echo -e "\nGenerated PR Description:"
+                echo "------------------------"
+                cat "${TEMP_DIR}/pr_description.md"
+                echo "------------------------"
+            else
+                echo "Error: Could not extract generated text from response"
+                echo "Response content:"
+                jq '.' "$temp_response" || cat "$temp_response"
+                return 1
+            fi
         else
-            echo "Error: Could not extract generated text from response"
-            echo "Response content:"
-            jq '.' "$temp_response" || cat "$temp_response"
+            echo "Error sending content to Gemini API"
+            if [ -f "$temp_response" ]; then
+                echo "Error response:"
+                jq '.' "$temp_response" || cat "$temp_response"
+            fi
+            return 1
+        fi
+    elif [[ "$provider" == "openai" ]]; then
+        echo "Sending content to OpenAI-compatible API (${OPENAI_API_BASE_URL}) (estimated tokens: $estimated_tokens)..."
+        
+        # Create the JSON request body for OpenAI-compatible API
+        cat > "$temp_request" << EOF
+{
+    "model": "${OPENAI_API_MODEL}",
+    "messages": [
+        {
+            "role": "user", 
+            "content": $(printf '%s' "$formatted_prompt" | jq -R -s '.')
+        }
+    ],
+    "temperature": 0.7,
+    "max_tokens": 2048
+}
+EOF
+        
+        # Send request to OpenAI-compatible API
+        if curl -s -X POST "${OPENAI_API_BASE_URL}/chat/completions" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+            -d "@$temp_request" > "$temp_response"; then
+            
+            # Debug: Show the raw response
+            echo "Debug: Raw API Response:"
+            cat "$temp_response"
+            echo "----------------------"
+            
+            # Extract the generated text from the response
+            if generated_text=$(jq -r '.choices[0].message.content // empty' "$temp_response") && [ -n "$generated_text" ]; then
+                # Save both raw response and extracted text
+                echo "$generated_text" > "${TEMP_DIR}/pr_description.md"
+                mv "$temp_response" "${TEMP_DIR}/openai_response.json"
+                
+                echo "Successfully generated PR description"
+                echo "Full response saved to ${TEMP_DIR}/openai_response.json"
+                echo "PR description saved to ${TEMP_DIR}/pr_description.md"
+                
+                # Display the PR description
+                echo -e "\nGenerated PR Description:"
+                echo "------------------------"
+                cat "${TEMP_DIR}/pr_description.md"
+                echo "------------------------"
+            else
+                echo "Error: Could not extract generated text from response"
+                echo "Response content:"
+                jq '.' "$temp_response" || cat "$temp_response"
+                return 1
+            fi
+        else
+            echo "Error sending content to OpenAI-compatible API"
+            if [ -f "$temp_response" ]; then
+                echo "Error response:"
+                jq '.' "$temp_response" || cat "$temp_response"
+            fi
             return 1
         fi
     else
-        echo "Error sending content to Gemini API"
-        if [ -f "$temp_response" ]; then
-            echo "Error response:"
-            jq '.' "$temp_response" || cat "$temp_response"
-        fi
+        echo "Error: Unknown LLM provider '$provider'"
+        echo "Supported providers: gemini, openai"
         return 1
     fi
     
@@ -144,6 +222,13 @@ check_and_install_dependencies() {
                 # For Intel Macs
                 export PATH="/usr/local/bin:$PATH"
             fi
+        fi
+        
+        # Check if using OpenAI-compatible API and provide LM Studio hint
+        if [[ "$LLM_PROVIDER" == "openai" && "$OPENAI_API_BASE_URL" == *"localhost"* ]]; then
+            echo "Info: Using a local OpenAI-compatible API endpoint."
+            echo "If using LM Studio, ensure it's running with the server enabled."
+            echo "LM Studio: https://lmstudio.ai/"
         fi
         
         # Check for whiptail/newt
